@@ -284,15 +284,15 @@ function render() {
 }
 // the jackpot: Aimee's amount for every date picked so far
 const euro = n => '€' + (n % 1 ? n.toFixed(2) : n);
-const pot = () => (S.amount || 0) * Object.keys(pickOf()).length;
+const pot = () => (S.amount || 0) * Object.keys(people()).length; // every name in the pool puts in the amount
 let lastPot = null;
 function jackpot() {
   const el = $('#jackpot');
   el.classList.toggle('hidden', !S.amount);
   if (!S.amount) return;
-  const n = Object.keys(pickOf()).length;
+  const n = Object.keys(people()).length;
   el.innerHTML = `<span class="l">💰 ${S.birth ? 'Prize' : 'Jackpot'}</span><span class="v">${euro(pot())}</span>
-    <span class="s">${n ? `${n} pick${n === 1 ? '' : 's'} × ${euro(S.amount)}` : `${euro(S.amount)} a pick`}</span>`;
+    <span class="s">${n ? `${n} name${n === 1 ? '' : 's'} × ${euro(S.amount)}` : `${euro(S.amount)} a name`}</span>`;
   if (lastPot !== null && pot() > lastPot) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
   lastPot = pot();
 }
@@ -302,7 +302,7 @@ function askAmount() { // Aimee's first visit: how much does each pick cost?
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="box" role="dialog" aria-modal="true"><h2>Hi Aimee! 👑</h2><p style="font-size:19px">How much does each person put in the pool?</p>
     <div class="row" style="justify-content:center"><span style="font-size:26px;font-weight:700">€</span><input id="amt" type="number" inputmode="decimal" min="1" max="1000" step="1" value="10" style="width:120px;flex:none;text-align:center;font-size:24px"></div>
-    <p class="muted">The jackpot goes up by this much every time someone picks a date. You can change it until the first date is picked.</p>
+    <p class="muted">The jackpot goes up by this much every time someone adds their name. You can change it until you lock the names.</p>
     <div class="btns"><button class="ghost" data-no>Later</button><button data-yes>Set the pool 💰</button></div></div>`;
   document.body.append(ov);
   ov.querySelector('[data-no]').onclick = () => ov.remove();
@@ -391,7 +391,7 @@ function winnerCard() {
 
 function aimeeCard() {
   let h = `<div class="card aimee"><h2>Aimee's buttons</h2><p class="muted">Only your phone sees these.</p>`;
-  if (!Object.keys(pickOf()).length && !S.birth)
+  if (!S.locked)
     h += `<div class="tool"><label for="amount">💰 Each person puts in</label><div class="row"><span style="font-weight:700;font-size:20px">€</span><input id="amount" type="number" inputmode="decimal" min="1" max="1000" value="${esc(S.amount || '')}" placeholder="10" style="font:inherit;font-size:18px;flex:1;min-width:0;padding:12px 14px;border:2px solid var(--line);border-radius:16px"><button class="sky" id="saveAmount">Save</button></div></div>`;
   if (!S.locked) {
     const n = Object.keys(people()).length;
@@ -555,7 +555,7 @@ try {
   DB.listen(v => {
     S = v; started = true;
     render();
-    if (amAimee() && !S.amount && !askedAmount && !S.birth && !Object.keys(pickOf()).length) askAmount();
+    if (amAimee() && !S.amount && !askedAmount && !S.locked) askAmount();
     lastDates.pop = null;
     if (S.locked && order().length) playDraw(false);
     if (S.birth && store.get('dd-seen-birth') !== S.birth) { store.set('dd-seen-birth', S.birth); confetti(220); }
