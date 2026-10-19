@@ -27,6 +27,22 @@ Paste the block below inside "rules": { ... }, next to the other entries (e.g. "
           ".validate": "$day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && newData.isString() && newData.val().length <= 40"
         }
       },
+      "paid": {
+        "$id": { ".write": true, ".validate": "newData.isBoolean()" }
+      },
+      "grabs": {
+        "$day": { ".write": true, "$id": { ".validate": "newData.isBoolean()" } }
+      },
+      "grabbed": {
+        "$day": {
+          ".write": true,
+          ".validate": "newData.hasChildren(['pid']) && $day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
+          "pid": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "paid": { ".validate": "newData.isBoolean()" },
+          "at": { ".validate": "newData.isNumber()" },
+          "$x": { ".validate": false }
+        }
+      },
       "skipped": {
         "$id": { ".write": true, ".validate": "newData.isBoolean()" }
       },

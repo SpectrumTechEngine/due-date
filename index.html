@@ -57,6 +57,21 @@
   .jackpot .v{font-size:34px;font-weight:700;line-height:1.05;color:#5a3d00}
   .jackpot .s{font-size:12px;font-weight:500;line-height:1.2;opacity:.85}
   .jackpot.bump{animation:pop .6s cubic-bezier(.3,1.8,.6,1)}
+  /* paying in, badges, rules */
+  .pb{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:middle;white-space:nowrap}
+  .pb.ok{background:#dff7ee;color:#1e7a5a}.pb.due{background:#fff3c4;color:#8a6200}.pb.lost{background:#ffe0e6;color:#9b1c3f}.pb.free{background:#ece5ff;color:#5b3fb0}
+  .paylist{list-style:none;margin:0 0 12px;padding:0}
+  .paylist li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-bottom:2px dashed var(--line)}
+  .paylist li:last-child{border-bottom:0}
+  a.btn{display:block;text-align:center;text-decoration:none;font-weight:600;color:#fff;border-radius:999px;padding:15px;font-size:20px;
+    background:linear-gradient(180deg,#5aa0ff,#2f6fe0);box-shadow:0 4px 0 #1e4fb0}
+  a.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #1e4fb0}
+  .rules ol{margin:0;padding-left:22px}
+  .rules li{margin-bottom:8px}
+  .ticks{display:flex;flex-direction:column;gap:8px;align-items:flex-start;margin:10px auto;width:max-content;max-width:100%;text-align:left;font-size:18px}
+  .ticks input{width:22px;height:22px;vertical-align:middle}
+  .cal .d.grab{background:#fff8dc;box-shadow:0 3px 0 #f5b800;cursor:pointer;outline:2px dashed #f5b800;outline-offset:-2px}
+  .order s{color:var(--soft)}
   .bob{display:inline-block;animation:bob 2.6s ease-in-out infinite}
   @keyframes bob{50%{transform:translateY(-5px) rotate(-6deg)}}
   main{max-width:560px;margin:0 auto;padding:10px 16px 20px}
@@ -257,13 +272,37 @@ const myIds = () => Object.keys(people()).filter(id => people()[id].phone === PH
 const order = () => list(S.order).filter(id => people()[id]);
 const pickOf = () => { const p = {}; Object.entries(S.dates || {}).forEach(([d, id]) => { if (people()[id]) p[id] = d; }); return p; };
 const skipped = id => !!(S.skipped && S.skipped[id]);
-const turnNow = () => { const p = pickOf(); return order().find(id => !p[id] && !skipped(id)); };
+const turnNow = () => { const p = pickOf(); return order().find(id => !p[id] && !skipped(id) && !forfeit(id)); };
+
+/* ---------- paying, the deadline and forfeits ----------
+   Everyone except Aimee pays the amount per name into the host's Revolut; the host ticks
+   them off in the owner tools (paid/<id>). Deadline: the end of the day before the earliest
+   picked date, Irish time. After that, unpaid names lose their date, and those dates are
+   "up for grabs": people enter (grabs/<day>/<id>), Aimee or the host draws a winner
+   (grabbed/<day> = { pid, paid }), and the winner pays the amount again straight away. */
+const REVOLUT = 'https://revolut.me/stephe9l8q';
+const isAimeeId = id => !!(S.aimee && S.aimee.pid === id);
+const isPaid = id => isAimeeId(id) || !!(S.paid && S.paid[id]);
+const todayIE = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Dublin' }).format(new Date());
+const earliest = () => Object.keys(S.dates || {}).filter(d => people()[S.dates[d]]).sort()[0] || null;
+const payBy = () => { const e = earliest(); return e ? fromDay(toDay(e) - DAY) : null; }; // the last day to pay
+const pastDeadline = () => { const e = earliest(); return !!e && todayIE() >= e; };
+function forfeit(id) { return !!S.locked && !isPaid(id) && pastDeadline(); }
+const grabbedBy = d => { const g = S.grabbed && S.grabbed[d]; return g && people()[g.pid] ? g.pid : null; };
+const holderOf = d => { const g = grabbedBy(d); if (g) return g; const id = S.dates && S.dates[d]; return id && people()[id] && !forfeit(id) ? id : null; };
+const upForGrabs = d => { const id = S.dates && S.dates[d]; return !!id && !!people()[id] && forfeit(id) && !grabbedBy(d); };
+const grabDays = () => Object.keys(S.dates || {}).filter(upForGrabs).sort();
+const wonDays = () => Object.keys(S.grabbed || {}).filter(grabbedBy).sort();
+const entriesFor = d => Object.keys((S.grabs && S.grabs[d]) || {}).filter(id => people()[id] && !forfeit(id));
+const amt = () => S.amount ? euro(S.amount) : 'the entry money';
+const badge = id => isAimeeId(id) ? '<span class="pb free">👑 free</span>' : forfeit(id) ? '<span class="pb lost">❌ forfeit</span>'
+  : isPaid(id) ? '<span class="pb ok">✓ paid</span>' : '<span class="pb due">⏳ not paid</span>';
 const colourOf = id => colour(Math.max(0, order().indexOf(id) >= 0 ? order().indexOf(id) : Object.keys(people()).sort((a, b) => people()[a].at - people()[b].at).indexOf(id)));
 // who this phone may pick for right now: its own names on their turn or skipped; Aimee also for the current/skipped person
 function canPickFor() {
   if (!S.locked || S.birth) return [];
   const p = pickOf(), now = turnNow(), mine = new Set(myIds()), aim = amAimee();
-  return order().filter(id => !p[id] && (id === now || skipped(id)) && (mine.has(id) || aim))
+  return order().filter(id => !p[id] && !forfeit(id) && (id === now || skipped(id)) && (mine.has(id) || aim))
     .sort((a, b) => (mine.has(b) - mine.has(a)) || ((b === now) - (a === now)));
 }
 function showError() { $('#app').innerHTML = `<div class="card err"><h2>Hmm, the pool won't load 😕</h2><p>Check the internet connection, then refresh the page.</p></div>`; }
@@ -276,6 +315,8 @@ function render() {
   if (S.birth) h += winnerCard();
   else if (!S.locked) h += joinCards();
   else h += pickCards();
+  if (!S.birth) h += payCard() + grabCard();
+  h += rulesCard();
   if (amAimee()) h += aimeeCard();
   app.innerHTML = h;
   jackpot();
@@ -285,15 +326,16 @@ function render() {
 // the jackpot: Aimee's amount for every date picked so far
 const euro = n => '€' + (n % 1 ? n.toFixed(2) : n);
 const paying = () => Object.keys(people()).filter(id => !(S.aimee && S.aimee.pid === id)).length; // Aimee plays free
-const pot = () => (S.amount || 0) * paying(); // every other name puts in the amount
+const entriesIn = () => paying() + wonDays().length; // every other name, plus each up-for-grabs date won
+const pot = () => (S.amount || 0) * entriesIn();
 let lastPot = null;
 function jackpot() {
   const el = $('#jackpot');
   el.classList.toggle('hidden', !S.amount);
   if (!S.amount) return;
-  const n = paying();
+  const n = entriesIn(), word = wonDays().length ? 'entr' + (n === 1 ? 'y' : 'ies') : 'name' + (n === 1 ? '' : 's');
   el.innerHTML = `<span class="l">💰 ${S.birth ? 'Prize' : 'Jackpot'}</span><span class="v">${euro(pot())}</span>
-    <span class="s">${n ? `${n} name${n === 1 ? '' : 's'} × ${euro(S.amount)}` : `${euro(S.amount)} a name`}</span>`;
+    <span class="s">${n ? `${n} ${word} × ${euro(S.amount)}` : `${euro(S.amount)} a name`}</span>`;
   if (lastPot !== null && pot() > lastPot) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
   lastPot = pot();
 }
@@ -311,6 +353,45 @@ function askAmount() { // Aimee's first visit: how much does each pick cost?
 }
 const dueLine = () => S.due ? `<p>Baby's due: <span class="due">⭐ ${nice(S.due, true)}</span></p>` : '';
 
+// paying in: this phone's names, what's owed, and the Revolut button
+function payCard() {
+  if (!S.amount) return '';
+  const mine = myIds().filter(id => !isAimeeId(id));
+  const wins = wonDays().filter(d => myIds().includes(grabbedBy(d)) && !S.grabbed[d].paid);
+  if (!mine.length && !wins.length) return '';
+  const owe = mine.filter(id => !isPaid(id) && !forfeit(id)).length + wins.length, by = payBy();
+  return `<div class="card pay"><h2>💸 Pay in</h2>
+    <ul class="paylist">${mine.map(id => `<li><span>${esc(nameOf(id))}</span>${badge(id)}</li>`).join('')}
+      ${wins.map(d => `<li><span>🎟️ ${nice(d)} (won in a draw)</span><span class="pb due">⏳ pay now</span></li>`).join('')}</ul>
+    ${owe ? `<a class="btn big" href="${REVOLUT}" target="_blank" rel="noopener">Pay ${euro(S.amount * owe)} with Revolut</a>
+      <p class="muted">Put ${owe > 1 || mine.length > 1 ? 'the names' : 'your name'} in the Revolut note. The host ticks you off when it arrives.</p>
+      <p class="note">${by ? `⏰ Pay by the end of <b>${nice(by, true)}</b>, or your date goes up for grabs.` : '⏰ Pay before the day before the earliest date anyone picks, or your date goes up for grabs.'}</p>`
+    : '<p>✓ All paid, thank you! 💕</p>'}
+  </div>`;
+}
+// dates lost by unpaid names: enter the draw for them
+function grabCard() {
+  const open = grabDays(), won = wonDays();
+  if (!S.locked || (!open.length && !won.length)) return '';
+  return `<div class="card"><h2>🎟️ Up for grabs</h2>
+    <p class="muted">These dates weren't paid for in time. Tap a 🎟️ date on the calendar to enter the draw. The winner pays ${amt()} straight away.</p>
+    <ul class="paylist">${open.map(d => { const n = entriesFor(d).length; return `<li><span>📅 ${nice(d, true)}</span><span class="muted">${n} entr${n === 1 ? 'y' : 'ies'}</span></li>`; }).join('')}
+      ${won.map(d => `<li><span>📅 ${nice(d, true)} → <b>${esc(nameOf(grabbedBy(d)))}</b></span>${S.grabbed[d].paid ? '<span class="pb ok">✓ paid</span>' : '<span class="pb due">⏳ pay now</span>'}</li>`).join('')}</ul>
+  </div>`;
+}
+function rulesCard() {
+  const by = payBy();
+  return `<div class="card rules"><h2>📜 The rules</h2><ol>
+    <li>Add your name. Each name puts in <b>${amt()}</b>. Aimee plays free 👑</li>
+    <li>Pay with the Revolut button and put your name in the note.</li>
+    <li>When everyone's in, Aimee locks the names. She picks first, then everyone else picks in a random order. One date per name.</li>
+    <li><b>Pay deadline:</b> the end of the day before the earliest date anyone has picked${by ? ` (that's <b>${nice(by, true)}</b>)` : ''}. Unpaid names lose their date.</li>
+    <li>Lost dates are <b>up for grabs</b>: enter the draw, and the winner pays another ${amt()} straight away.</li>
+    <li>Baby born on your date? 🎯 <b>You win the whole jackpot!</b></li>
+    <li>Born on a day nobody holds? <b>Half to Aimee</b>, half to the closest guess (ties share that half).</li>
+  </ol></div>`;
+}
+
 function joinCards() {
   const ps = Object.entries(people()).sort((a, b) => a[1].at - b[1].at);
   const mine = new Set(myIds());
@@ -326,7 +407,7 @@ function joinCards() {
     <div class="card">
       <h2>Who's in? <span class="muted">(${ps.length})</span></h2>
       ${ps.length ? '' : '<p class="muted">Nobody yet. Be the first!</p>'}
-      <div class="chips">${ps.map(([id, p], i) => `<span class="chip ${colour(i)}">${S.aimee && S.aimee.pid === id ? '👑 ' : ''}${esc(p.name)}${mine.has(id) || amAimee() ? ` <button class="x" data-del="${id}" aria-label="Remove ${esc(p.name)}">×</button>` : ''}</span>`).join('')}</div>
+      <div class="chips">${ps.map(([id, p], i) => `<span class="chip ${colour(i)}">${S.aimee && S.aimee.pid === id ? '👑 ' : ''}${esc(p.name)}${S.amount && !isAimeeId(id) && isPaid(id) ? ' ✓' : ''}${mine.has(id) || amAimee() ? ` <button class="x" data-del="${id}" aria-label="Remove ${esc(p.name)}">×</button>` : ''}</span>`).join('')}</div>
       <p class="muted" style="margin-top:14px">⏳ When everyone's in, Aimee locks the names and the draw begins. Aimee picks first, then everyone else in a random order.</p>
     </div>`;
 }
@@ -334,7 +415,7 @@ function joinCards() {
 function pickCards() {
   const ord = order(), p = pickOf(), now = turnNow(), mine = new Set(myIds()), can = canPickFor();
   let banner;
-  if (!now && ord.every(id => p[id])) banner = `<div class="banner">All the dates are picked! 🎉<br><span class="muted">Now we wait for baby 🍼</span></div>`;
+  if (!now && ord.every(id => p[id] || forfeit(id))) banner = `<div class="banner">All the dates are picked! 🎉<br><span class="muted">Now we wait for baby 🍼</span></div>`;
   else if (!now) banner = `<div class="banner">Everyone's had a turn! ⏭️<br><span class="muted">Skipped people can still grab a free date.</span></div>`;
   else if (mine.has(now)) banner = `<div class="banner mine">🎉 It's your turn${mine.size > 1 ? ' for <b>' + esc(nameOf(now)) + '</b>' : ', <b>' + esc(nameOf(now)) + '</b>'}!<br><span class="muted">Tap a free date below 👇</span></div>`;
   else banner = `<div class="banner">It's <b>${esc(nameOf(now))}</b>'s turn to pick ⏳</div>`;
@@ -345,13 +426,14 @@ function pickCards() {
       <h2>Pick a date 📅</h2>
       ${dueLine()}${forSel}${skipNote}
       ${calendar(can.length > 0)}
-      <div class="legend"><span>⭐ due date</span><span>🎈 dashed = free to pick</span></div>
+      <div class="legend"><span>⭐ due date</span><span>🎈 dashed = free to pick</span>${grabDays().length ? '<span>🎟️ up for grabs: tap to enter</span>' : ''}</div>
     </div>
     <div class="card">
       <h2>The order 🎲 <button class="ghost small" id="replay" style="float:right">Replay the draw</button></h2>
       <ol class="order">${ord.map((id, i) => `<li class="${id === now ? 'now' : ''}"><span class="n ${colour(i)}">${i + 1}</span>
-        <span class="who">${i === 0 && S.aimee && S.aimee.pid === id ? '👑 ' : ''}${esc(nameOf(id))}${mine.has(id) ? ' <span class="muted">(you)</span>' : ''}</span>
-        <span class="st">${p[id] ? '📅 ' + nice(p[id]) : id === now ? 'picking now…' : skipped(id) ? '⏭️ skipped' : 'waiting'}</span></li>`).join('')}</ol>
+        <span class="who">${i === 0 && S.aimee && S.aimee.pid === id ? '👑 ' : ''}${esc(nameOf(id))}${mine.has(id) ? ' <span class="muted">(you)</span>' : ''}${S.amount ? ' ' + badge(id) : ''}
+          ${wonDays().filter(d => grabbedBy(d) === id).map(d => `<br><span class="muted">🎟️ also ${nice(d)}</span>`).join('')}</span>
+        <span class="st">${forfeit(id) ? (p[id] ? `<s>${nice(p[id])}</s>` : '—') : p[id] ? '📅 ' + nice(p[id]) : id === now ? 'picking now…' : skipped(id) ? '⏭️ skipped' : 'waiting'}</span></li>`).join('')}</ol>
     </div>`;
 }
 
@@ -363,27 +445,36 @@ function calendar(canPick) {
   const lead = (new Date(start).getUTCDay() + 6) % 7;
   for (let i = 0; i < lead; i++) h += '<div class="d blank"></div>';
   for (let t = start; t <= end; t += DAY) {
-    const d = fromDay(t), dt = new Date(t), who = people()[taken[d]] ? taken[d] : null;
+    const d = fromDay(t), dt = new Date(t), who = holderOf(d), grab = upForGrabs(d), used = !!people()[taken[d]];
     const first = t === start || dt.getUTCDate() === 1;
-    const cls = ['d', who ? 'taken' : 'free', who && mine.has(who) ? 'mine-pick' : '', !who && canPick ? 'can' : '', d === S.due ? 'duedate' : '', d === S.birth ? 'born' : '', lastDates.pop === d ? 'pop' : ''].join(' ');
-    h += `<button class="${cls}" data-day="${d}" ${who || !canPick ? 'tabindex="-1"' : ''} aria-label="${nice(d, true)}${who ? ', taken by ' + esc(nameOf(who)) : ''}">
+    const cls = ['d', who ? 'taken' : grab ? 'grab' : used ? 'taken' : 'free', who && mine.has(who) ? 'mine-pick' : '', !used && canPick ? 'can' : '',
+      grab && !S.birth ? 'enter' : '', d === S.due ? 'duedate' : '', d === S.birth ? 'born' : '', lastDates.pop === d ? 'pop' : ''].join(' ');
+    h += `<button class="${cls}" data-day="${d}" ${(used && !grab) || (!used && !canPick) ? 'tabindex="-1"' : ''} aria-label="${nice(d, true)}${who ? ', taken by ' + esc(nameOf(who)) : grab ? ', up for grabs' : ''}">
       <span class="m">${first ? dt.toLocaleDateString('en-IE', { timeZone: 'UTC', month: 'short' }) : '&nbsp;'}</span>${dt.getUTCDate()}
-      ${who ? `<span class="t ${colourOf(who)}">${esc(nameOf(who))}</span>` : ''}</button>`;
+      ${who ? `<span class="t ${colourOf(who)}">${esc(nameOf(who))}</span>` : grab ? '<span class="t c2">🎟️ grab</span>' : ''}</button>`;
   }
   return h + '</div>';
 }
 
 function winnerCard() {
-  const p = pickOf(), b = toDay(S.birth);
-  const rows = Object.entries(p).map(([id, d]) => ({ id, d, off: Math.round(Math.abs(toDay(d) - b) / DAY) })).sort((x, y) => x.off - y.off);
-  const best = rows.length ? rows[0].off : null, wins = rows.filter(r => r.off === best);
+  // every held date (picked and still valid, or won in an up-for-grabs draw)
+  const b = toDay(S.birth), cents = n => euro(Math.round(n * 100) / 100);
+  const rows = Object.keys(S.dates || {}).map(d => ({ d, id: holderOf(d) })).filter(r => r.id)
+    .map(r => ({ ...r, off: Math.round(Math.abs(toDay(r.d) - b) / DAY) })).sort((x, y) => x.off - y.off);
+  const best = rows.length ? rows[0].off : null, wins = rows.filter(r => r.off === best), names = wins.map(r => esc(nameOf(r.id))).join(' & ');
+  let prize = '';
+  if (!wins.length) prize = '<p class="muted">Nobody held a date.</p>';
+  else if (best === 0) prize = `<p style="font-size:24px;margin:14px 0 4px">🏆 <b>${names}</b> ${wins.length > 1 ? 'win' : 'wins'}${S.amount ? ' the whole jackpot, ' + euro(pot()) : ''}!</p>
+      ${S.amount && wins.length > 1 ? `<p class="muted">That's ${cents(pot() / wins.length)} each.</p>` : ''}<p class="muted">Spot on, the exact day! 🎯</p>`;
+  else prize = `<p class="muted" style="margin-top:12px">Baby came on a day nobody held, so the jackpot splits in half:</p>
+      <p style="font-size:21px;margin:8px 0 4px">👑 <b>Aimee</b>${S.amount ? ': ' + cents(pot() / 2) : ' gets half'}</p>
+      <p style="font-size:21px;margin:4px 0">🏆 <b>${names}</b>${S.amount ? ': ' + cents(pot() / 2 / wins.length) + (wins.length > 1 ? ' each' : '') : ' gets half'}</p>
+      <p class="muted">The closest guess${wins.length > 1 ? 'es' : ''}, just ${best} day${best === 1 ? '' : 's'} out.</p>`;
   return `<div class="card winner">
       <div class="big">👶🎉</div>
       <h2>Baby's here!</h2>
       <p>Born on <span class="due">${nice(S.birth, true)}</span></p>
-      ${wins.length ? `<p style="font-size:24px;margin:14px 0 4px">🏆 <b>${wins.map(r => esc(nameOf(r.id))).join(' & ')}</b> ${wins.length > 1 ? 'win' : 'wins'}${S.amount ? ' ' + euro(pot()) : ''}!</p>
-        ${S.amount && wins.length > 1 ? `<p class="muted">That's ${euro(Math.round(pot() / wins.length * 100) / 100)} each.</p>` : ''}
-        <p class="muted">${best === 0 ? 'Spot on, the exact day! 🎯' : `Just ${best} day${best === 1 ? '' : 's'} out.`}</p>` : '<p class="muted">Nobody picked a date.</p>'}
+      ${prize}
     </div>
     <div class="card"><h2>How close was everyone?</h2>
       <ol class="order">${rows.map((r, i) => `<li><span class="n ${colourOf(r.id)}">${i + 1}</span><span class="who">${esc(nameOf(r.id))}</span><span class="st">${nice(r.d)} · ${r.off === 0 ? '🎯 exact' : r.off + ' day' + (r.off === 1 ? '' : 's') + ' out'}</span></li>`).join('')}</ol>
@@ -403,6 +494,8 @@ function aimeeCard() {
     const now = turnNow();
     if (now) h += `<div class="tool"><label>${esc(nameOf(now))} taking too long?</label><button class="sky" id="skip">⏭️ Skip ${esc(nameOf(now))}</button>
       <p class="muted">They can still pick any free date later.</p></div>`;
+    grabDays().forEach(d => { const n = entriesFor(d).length;
+      h += `<div class="tool"><label>🎟️ ${nice(d, true)} is up for grabs (${n} entr${n === 1 ? 'y' : 'ies'})</label><button class="sky" data-grabdraw="${d}" ${n ? '' : 'disabled'}>🎲 Draw the winner</button></div>`; });
     h += `<div class="tool"><label for="born">👶 Baby's here? Enter the birth date</label><div class="row"><input id="born" type="date"><button class="mint" id="saveBorn">Show the winner</button></div></div>`;
   } else {
     h += `<div class="tool"><button class="ghost" id="undoBorn">Oops, wrong birth date</button></div>`;
@@ -416,6 +509,8 @@ function wire() {
   if (f) f.onsubmit = e => { e.preventDefault(); join(); };
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removePerson(b.dataset.del));
   document.querySelectorAll('.cal .d.can').forEach(b => b.onclick = () => pick(b.dataset.day));
+  document.querySelectorAll('.cal .d.enter').forEach(b => b.onclick = () => enterGrab(b.dataset.day));
+  document.querySelectorAll('[data-grabdraw]').forEach(b => b.onclick = () => grabDraw(b.dataset.grabdraw));
   const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
   on('saveAmount', () => { const v = Math.round(+$('#amount').value * 100) / 100; if (v > 0 && v <= 1000) act(() => DB.update({ amount: v })); });
   on('saveDue',() => { const v = $('#due').value; if (v) act(() => DB.update({ due: v })); });
@@ -466,6 +561,40 @@ function pick(day) {
     if (!(await DB.claim('dates/' + day, who))) { lastDates.pop = null; return alert('Oops! Someone just grabbed that date. Pick another one.'); }
     confetti(70);
   }));
+}
+// enter (or leave) the draw for an up-for-grabs date, for any of this phone's names
+function enterGrab(day) {
+  const mine = myIds().filter(id => !forfeit(id) && holderOf(day) !== id);
+  if (!mine.length) return alert(myIds().length ? 'Your names can\'t enter this draw (only paid names can).' : 'Only people in the pool can enter the draw.');
+  const inn = new Set(entriesFor(day));
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="box" role="dialog" aria-modal="true"><h2>🎟️ ${nice(day, true)}</h2>
+    <p>This date is up for grabs! Tick who wants to enter the draw.</p>
+    <div class="ticks">${mine.map(id => `<label><input type="checkbox" value="${id}" ${inn.has(id) ? 'checked' : ''}> ${esc(nameOf(id))}</label>`).join('')}</div>
+    <p class="note">If you win, pay ${amt()} with Revolut straight away to keep it.</p>
+    <div class="btns"><button class="ghost" data-no>Cancel</button><button data-yes>Save 🎟️</button></div></div>`;
+  document.body.append(ov);
+  ov.querySelector('[data-no]').onclick = () => ov.remove();
+  ov.querySelector('[data-yes]').onclick = () => {
+    const patch = {}; ov.querySelectorAll('input').forEach(c => { if (c.checked !== inn.has(c.value)) patch['grabs/' + day + '/' + c.value] = c.checked || null; });
+    ov.remove(); if (Object.keys(patch).length) act(() => DB.update(patch));
+  };
+}
+// Aimee or the host draws the winner of an up-for-grabs date, with a little spin
+async function grabDraw(day) {
+  const ids = entriesFor(day); if (!ids.length || drawing) return;
+  const win = shuffle(ids)[0];
+  try { await DB.update({ ['grabbed/' + day]: { pid: win, paid: false, at: Date.now() }, ['grabs/' + day]: null }); }
+  catch (e) { console.warn(e); return alert("That didn't save. Check the internet and try again."); }
+  drawing = true;
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="box"><h2>🎟️ ${nice(day, true)}</h2><p class="muted">And the date goes to…</p><p class="spin" style="font-size:30px;font-weight:700;min-height:44px"></p><div class="btns"></div></div>`;
+  document.body.append(ov);
+  const s = ov.querySelector('.spin'), wait = ms => new Promise(r => setTimeout(r, ms)), names = ids.map(nameOf);
+  for (let k = 0; k < (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 16); k++) { s.textContent = names[k % names.length]; await wait(50 + k * 12); }
+  s.textContent = '🎉 ' + nameOf(win); confetti(120);
+  const btns = ov.querySelector('.btns'); btns.innerHTML = `<p class="muted" style="width:100%">${esc(nameOf(win))} pays ${amt()} straight away.</p><button data-go>OK</button>`;
+  btns.querySelector('[data-go]').onclick = () => { ov.remove(); drawing = false; };
 }
 function ask(html, yes, fn) {
   const ov = document.createElement('div'); ov.className = 'ov';
@@ -542,13 +671,37 @@ STE.ownerTabs.push({ title: 'Due Date', render(el, api) {
       if (!confirm({ aimee: 'Remove the current "Aimee"?', unlock: 'Undo the draw and clear all picked dates?', wipe: 'Delete the whole pool? This cannot be undone.' }[o])) return;
       let patch = {};
       if (o === 'aimee') patch = { aimee: null, ...(S.aimee ? { ['people/' + S.aimee.pid]: null } : {}) };
-      if (o === 'unlock') patch = { locked: null, order: null, birth: null, ...clearDates, ...clearSkips };
-      if (o === 'wipe') patch = { locked: null, order: null, birth: null, due: null, aimee: null, amount: null, ...clearDates, ...clearSkips, ...Object.fromEntries(Object.keys(people()).map(id => ['people/' + id, null])) };
+      const clearGrabs = Object.fromEntries([...Object.keys(S.grabs || {}).map(d => ['grabs/' + d, null]), ...Object.keys(S.grabbed || {}).map(d => ['grabbed/' + d, null])]);
+      if (o === 'unlock') patch = { locked: null, order: null, birth: null, ...clearDates, ...clearSkips, ...clearGrabs };
+      if (o === 'wipe') patch = { locked: null, order: null, birth: null, due: null, aimee: null, amount: null, ...clearDates, ...clearSkips, ...clearGrabs,
+        ...Object.fromEntries(Object.keys(S.paid || {}).map(id => ['paid/' + id, null])), ...Object.fromEntries(Object.keys(people()).map(id => ['people/' + id, null])) };
       try { await DB.update(patch); draw(); } catch (e) { alert('That did not save: ' + (e.message || e)); }
     });
   };
   draw();
 } });
+// Payments: the host ticks off each name (and each up-for-grabs date won) when the Revolut money arrives
+STE.ownerTabs.push({ title: 'Payments', render(el, api) {
+  const draw = () => {
+    const ps = Object.keys(people()).filter(id => !isAimeeId(id)).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+    const paidN = ps.filter(id => isPaid(id)).length, by = payBy();
+    el.innerHTML = `<p><b>${paidN}</b> of <b>${ps.length}</b> names paid · ${S.amount ? euro(S.amount) + ' each' : 'Aimee hasn\'t set the amount yet'}</p>
+      <p><small>${by ? `Deadline: end of ${nice(by, true)}${pastDeadline() ? ' (passed: unpaid names have lost their dates)' : ''}` : 'The deadline starts once someone picks a date.'}</small></p>
+      ${ps.map(id => `<p><label><input type="checkbox" data-paid="${id}" ${isPaid(id) ? 'checked' : ''}> ${api.esc(nameOf(id))}</label>${forfeit(id) ? ' <small>❌ forfeit</small>' : ''}</p>`).join('') || '<p><small>Nobody has joined yet.</small></p>'}
+      ${wonDays().length ? '<h3>Up-for-grabs dates won</h3>' + wonDays().map(d => `<p><label><input type="checkbox" data-gpaid="${d}" ${S.grabbed[d].paid ? 'checked' : ''}> ${nice(d)}: ${api.esc(nameOf(grabbedBy(d)))}</label> <button data-redraw="${d}">Undo this win</button></p>`).join('') : ''}
+      ${grabDays().map(d => `<p>🎟️ ${nice(d)}: ${entriesFor(d).length} entries <button data-gd="${d}" ${entriesFor(d).length ? '' : 'disabled'}>Draw the winner</button></p>`).join('')}`;
+    const save = async patch => { try { await DB.update(patch); draw(); } catch (e) { alert('That did not save: ' + (e.message || e)); } };
+    el.querySelectorAll('[data-paid]').forEach(c => c.onchange = () => save({ ['paid/' + c.dataset.paid]: c.checked || null }));
+    el.querySelectorAll('[data-gpaid]').forEach(c => c.onchange = () => save({ ['grabbed/' + c.dataset.gpaid + '/paid']: c.checked }));
+    el.querySelectorAll('[data-redraw]').forEach(b => b.onclick = () => { if (confirm('Take this date back? It goes up for grabs again.')) save({ ['grabbed/' + b.dataset.redraw]: null }); });
+    el.querySelectorAll('[data-gd]').forEach(b => b.onclick = async () => { await grabDraw(b.dataset.gd); draw(); });
+  };
+  draw();
+} });
+
+// the deadline passes at midnight: redraw the page when it does
+let wasPast = null;
+setInterval(() => { if (!started) return; const p = pastDeadline(); if (wasPast !== null && p !== wasPast) render(); wasPast = p; }, 60000);
 
 /* ---------- start ---------- */
 try {
