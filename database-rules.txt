@@ -16,6 +16,7 @@ Paste the block below inside "rules": { ... }, next to the other entries (e.g. "
       "due": { ".write": true, ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" },
       "birth": { ".write": true, ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" },
       "locked": { ".write": true, ".validate": "newData.isBoolean()" },
+      "amount": { ".write": true, ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 1000" },
       "order": {
         ".write": true,
         "$n": { ".validate": "newData.isString() && newData.val().length <= 40" }

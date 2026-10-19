@@ -34,6 +34,16 @@
   .mum::before{content:"💖";position:absolute;top:-14px;left:50%;transform:translateX(-50%) rotate(8deg);font-size:28px}
   .mum img{display:block;width:100%;height:auto;border-radius:12px}
   .mum figcaption{padding:8px 4px 10px;font-weight:600;font-size:16px;color:var(--pink)}
+  /* the running jackpot, a gold sticker beside the photo */
+  .hero{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
+  .hero .mum{margin:16px 0 8px;flex:none;width:min(190px,52vw)}
+  .jackpot{flex:none;width:min(140px,36vw);aspect-ratio:1;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    background:radial-gradient(circle at 35% 30%,#fff6c2,#ffd84d 55%,#f5b800);color:#6b4a00;transform:rotate(6deg);
+    box-shadow:0 5px 0 #d99a00,0 10px 22px rgba(200,140,0,.3);border:4px dashed rgba(255,255,255,.7)}
+  .jackpot .l{font-size:14px;font-weight:600;line-height:1.1}
+  .jackpot .v{font-size:34px;font-weight:700;line-height:1.05;color:#5a3d00}
+  .jackpot .s{font-size:12px;font-weight:500;line-height:1.2;opacity:.85}
+  .jackpot.bump{animation:pop .6s cubic-bezier(.3,1.8,.6,1)}
   .bob{display:inline-block;animation:bob 2.6s ease-in-out infinite}
   @keyframes bob{50%{transform:translateY(-5px) rotate(-6deg)}}
   main{max-width:560px;margin:0 auto;padding:10px 16px 20px}
@@ -122,7 +132,10 @@
 <header>
   <h1><span class="bob">🍼</span> <span class="g">Due Date</span></h1>
   <p>Guess the day baby arrives!</p>
-  <figure class="mum"><img src="aimee.jpg" alt="Aimee" width="400" height="560"><figcaption>Aimee's baby is on the way! 💕</figcaption></figure>
+  <div class="hero">
+    <figure class="mum"><img src="aimee.jpg" alt="Aimee" width="400" height="560"><figcaption>Aimee's baby is on the way! 💕</figcaption></figure>
+    <div id="jackpot" class="jackpot hidden" aria-live="polite"></div>
+  </div>
 </header>
 <main id="app"><div class="card"><p class="muted">Loading the pool…</p></div></main>
 <footer><img src="ste-logo.png" alt="Created By The Spectrum Tech Engine" class="ste-logo"></footer>
@@ -246,8 +259,35 @@ function render() {
   else h += pickCards();
   if (amAimee()) h += aimeeCard();
   app.innerHTML = h;
+  jackpot();
   if ($('#name')) { $('#name').value = typed; if (focused === 'name') $('#name').focus(); }
   wire();
+}
+// the jackpot: Aimee's amount for every date picked so far
+const euro = n => '€' + (n % 1 ? n.toFixed(2) : n);
+const pot = () => (S.amount || 0) * Object.keys(pickOf()).length;
+let lastPot = null;
+function jackpot() {
+  const el = $('#jackpot');
+  el.classList.toggle('hidden', !S.amount);
+  if (!S.amount) return;
+  const n = Object.keys(pickOf()).length;
+  el.innerHTML = `<span class="l">💰 ${S.birth ? 'Prize' : 'Jackpot'}</span><span class="v">${euro(pot())}</span>
+    <span class="s">${n ? `${n} pick${n === 1 ? '' : 's'} × ${euro(S.amount)}` : `${euro(S.amount)} a pick`}</span>`;
+  if (lastPot !== null && pot() > lastPot) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  lastPot = pot();
+}
+let askedAmount = false;
+function askAmount() { // Aimee's first visit: how much does each pick cost?
+  askedAmount = true;
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="box" role="dialog" aria-modal="true"><h2>Hi Aimee! 👑</h2><p style="font-size:19px">How much does each person put in the pool?</p>
+    <div class="row" style="justify-content:center"><span style="font-size:26px;font-weight:700">€</span><input id="amt" type="number" inputmode="decimal" min="1" max="1000" step="1" value="10" style="width:120px;flex:none;text-align:center;font-size:24px"></div>
+    <p class="muted">The jackpot goes up by this much every time someone picks a date. You can change it until the first date is picked.</p>
+    <div class="btns"><button class="ghost" data-no>Later</button><button data-yes>Set the pool 💰</button></div></div>`;
+  document.body.append(ov);
+  ov.querySelector('[data-no]').onclick = () => ov.remove();
+  ov.querySelector('[data-yes]').onclick = () => { const v = Math.round(+ov.querySelector('#amt').value * 100) / 100; if (v > 0 && v <= 1000) { ov.remove(); act(() => DB.update({ amount: v })); } };
 }
 const dueLine = () => S.due ? `<p>Baby's due: <span class="due">⭐ ${nice(S.due, true)}</span></p>` : '';
 
@@ -321,7 +361,8 @@ function winnerCard() {
       <div class="big">👶🎉</div>
       <h2>Baby's here!</h2>
       <p>Born on <span class="due">${nice(S.birth, true)}</span></p>
-      ${wins.length ? `<p style="font-size:24px;margin:14px 0 4px">🏆 <b>${wins.map(r => esc(nameOf(r.id))).join(' & ')}</b> ${wins.length > 1 ? 'win' : 'wins'}!</p>
+      ${wins.length ? `<p style="font-size:24px;margin:14px 0 4px">🏆 <b>${wins.map(r => esc(nameOf(r.id))).join(' & ')}</b> ${wins.length > 1 ? 'win' : 'wins'}${S.amount ? ' ' + euro(pot()) : ''}!</p>
+        ${S.amount && wins.length > 1 ? `<p class="muted">That's ${euro(Math.round(pot() / wins.length * 100) / 100)} each.</p>` : ''}
         <p class="muted">${best === 0 ? 'Spot on, the exact day! 🎯' : `Just ${best} day${best === 1 ? '' : 's'} out.`}</p>` : '<p class="muted">Nobody picked a date.</p>'}
     </div>
     <div class="card"><h2>How close was everyone?</h2>
@@ -331,6 +372,8 @@ function winnerCard() {
 
 function aimeeCard() {
   let h = `<div class="card aimee"><h2>Aimee's buttons</h2><p class="muted">Only your phone sees these.</p>`;
+  if (!Object.keys(pickOf()).length && !S.birth)
+    h += `<div class="tool"><label for="amount">💰 Each person puts in</label><div class="row"><span style="font-weight:700;font-size:20px">€</span><input id="amount" type="number" inputmode="decimal" min="1" max="1000" value="${esc(S.amount || '')}" placeholder="10" style="font:inherit;font-size:18px;flex:1;min-width:0;padding:12px 14px;border:2px solid var(--line);border-radius:16px"><button class="sky" id="saveAmount">Save</button></div></div>`;
   if (!S.locked) {
     const n = Object.keys(people()).length;
     h += `<div class="tool"><label for="due">Baby's due date</label><div class="row"><input id="due" type="date" value="${esc(S.due || '')}"><button class="sky" id="saveDue">Save</button></div></div>
@@ -354,7 +397,8 @@ function wire() {
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removePerson(b.dataset.del));
   document.querySelectorAll('.cal .d.can').forEach(b => b.onclick = () => pick(b.dataset.day));
   const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
-  on('saveDue', () => { const v = $('#due').value; if (v) act(() => DB.update({ due: v })); });
+  on('saveAmount', () => { const v = Math.round(+$('#amount').value * 100) / 100; if (v > 0 && v <= 1000) act(() => DB.update({ amount: v })); });
+  on('saveDue',() => { const v = $('#due').value; if (v) act(() => DB.update({ due: v })); });
   on('lock', lockAndDraw);
   on('skip', () => { const id = turnNow(); if (id) act(() => DB.update({ ['skipped/' + id]: true })); });
   on('saveBorn', () => { const v = $('#born').value; if (!v) return; ask(`Baby born on <b>${nice(v, true)}</b>?`, 'Yes, show the winner! 🎉', () => act(() => DB.update({ birth: v }))); });
@@ -479,7 +523,7 @@ STE.ownerTabs.push({ title: 'Due Date', render(el, api) {
       let patch = {};
       if (o === 'aimee') patch = { aimee: null, ...(S.aimee ? { ['people/' + S.aimee.pid]: null } : {}) };
       if (o === 'unlock') patch = { locked: null, order: null, birth: null, ...clearDates, ...clearSkips };
-      if (o === 'wipe') patch = { locked: null, order: null, birth: null, due: null, aimee: null, ...clearDates, ...clearSkips, ...Object.fromEntries(Object.keys(people()).map(id => ['people/' + id, null])) };
+      if (o === 'wipe') patch = { locked: null, order: null, birth: null, due: null, aimee: null, amount: null, ...clearDates, ...clearSkips, ...Object.fromEntries(Object.keys(people()).map(id => ['people/' + id, null])) };
       try { await DB.update(patch); draw(); } catch (e) { alert('That did not save: ' + (e.message || e)); }
     });
   };
@@ -492,6 +536,7 @@ try {
   DB.listen(v => {
     S = v; started = true;
     render();
+    if (amAimee() && !S.amount && !askedAmount && !S.birth && !Object.keys(pickOf()).length) askAmount();
     lastDates.pop = null;
     if (S.locked && order().length) playDraw(false);
     if (S.birth && store.get('dd-seen-birth') !== S.birth) { store.set('dd-seen-birth', S.birth); confetti(220); }
