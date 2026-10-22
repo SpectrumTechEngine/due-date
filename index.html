@@ -275,12 +275,12 @@ const skipped = id => !!(S.skipped && S.skipped[id]);
 const turnNow = () => { const p = pickOf(); return order().find(id => !p[id] && !skipped(id) && !forfeit(id)); };
 
 /* ---------- paying, the deadline and forfeits ----------
-   Everyone except Aimee pays the amount per name into the host's Revolut; the host ticks
+   Everyone except Aimee pays the amount per name into Aimee's Revolut; Aimee (or the host, in the owner tools) ticks
    them off in the owner tools (paid/<id>). Deadline: the end of the day before the earliest
    picked date, Irish time. After that, unpaid names lose their date, and those dates are
    "up for grabs": people enter (grabs/<day>/<id>), Aimee or the host draws a winner
    (grabbed/<day> = { pid, paid }), and the winner pays the amount again straight away. */
-const REVOLUT = 'https://revolut.me/stephe9l8q';
+const REVOLUT = 'https://revolut.me/aimeekate_s';
 const isAimeeId = id => !!(S.aimee && S.aimee.pid === id);
 const isPaid = id => isAimeeId(id) || !!(S.paid && S.paid[id]);
 const todayIE = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Dublin' }).format(new Date());
@@ -364,7 +364,7 @@ function payCard() {
     <ul class="paylist">${mine.map(id => `<li><span>${esc(nameOf(id))}</span>${badge(id)}</li>`).join('')}
       ${wins.map(d => `<li><span>🎟️ ${nice(d)} (won in a draw)</span><span class="pb due">⏳ pay now</span></li>`).join('')}</ul>
     ${owe ? `<a class="btn big" href="${REVOLUT}" target="_blank" rel="noopener">Pay ${euro(S.amount * owe)} with Revolut</a>
-      <p class="muted">Put ${owe > 1 || mine.length > 1 ? 'the names' : 'your name'} in the Revolut note. The host ticks you off when it arrives.</p>
+      <p class="muted">Put ${owe > 1 || mine.length > 1 ? 'the names' : 'your name'} in the Revolut note. Aimee ticks you off when it arrives.</p>
       <p class="note">${by ? `⏰ Pay by the end of <b>${nice(by, true)}</b>, or your date goes up for grabs.` : '⏰ Pay before the day before the earliest date anyone picks, or your date goes up for grabs.'}</p>`
     : '<p>✓ All paid, thank you! 💕</p>'}
   </div>`;
@@ -483,6 +483,15 @@ function winnerCard() {
 
 function aimeeCard() {
   let h = `<div class="card aimee"><h2>Aimee's buttons</h2><p class="muted">Only your phone sees these.</p>`;
+  // tick people off as their Revolut money arrives (the host can do it too, in the owner tools)
+  const payers = Object.keys(people()).filter(id => !isAimeeId(id)).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  if (S.amount && (payers.length || wonDays().length)) {
+    const n = payers.filter(isPaid).length;
+    h += `<div class="tool"><label>💸 Who's paid? <span class="muted">(${n} of ${payers.length})</span></label>
+      <div class="ticks" style="margin:6px 0">${payers.map(id => `<label><input type="checkbox" data-tick="${id}" ${isPaid(id) ? 'checked' : ''}> ${esc(nameOf(id))}${forfeit(id) ? ' <span class="pb lost">❌ forfeit</span>' : ''}</label>`).join('')}
+      ${wonDays().map(d => `<label><input type="checkbox" data-gtick="${d}" ${S.grabbed[d].paid ? 'checked' : ''}> 🎟️ ${nice(d)}: ${esc(nameOf(grabbedBy(d)))}</label>`).join('')}</div>
+      <p class="muted">Tick each one when the money lands in your Revolut.</p></div>`;
+  }
   if (!S.locked)
     h += `<div class="tool"><label for="amount">💰 Each person puts in</label><div class="row"><span style="font-weight:700;font-size:20px">€</span><input id="amount" type="number" inputmode="decimal" min="1" max="1000" value="${esc(S.amount || '')}" placeholder="10" style="font:inherit;font-size:18px;flex:1;min-width:0;padding:12px 14px;border:2px solid var(--line);border-radius:16px"><button class="sky" id="saveAmount">Save</button></div></div>`;
   if (!S.locked) {
@@ -511,6 +520,8 @@ function wire() {
   document.querySelectorAll('.cal .d.can').forEach(b => b.onclick = () => pick(b.dataset.day));
   document.querySelectorAll('.cal .d.enter').forEach(b => b.onclick = () => enterGrab(b.dataset.day));
   document.querySelectorAll('[data-grabdraw]').forEach(b => b.onclick = () => grabDraw(b.dataset.grabdraw));
+  document.querySelectorAll('[data-tick]').forEach(c => c.onchange = () => act(() => DB.update({ ['paid/' + c.dataset.tick]: c.checked || null })));
+  document.querySelectorAll('[data-gtick]').forEach(c => c.onchange = () => act(() => DB.update({ ['grabbed/' + c.dataset.gtick + '/paid']: c.checked })));
   const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
   on('saveAmount', () => { const v = Math.round(+$('#amount').value * 100) / 100; if (v > 0 && v <= 1000) act(() => DB.update({ amount: v })); });
   on('saveDue',() => { const v = $('#due').value; if (v) act(() => DB.update({ due: v })); });
