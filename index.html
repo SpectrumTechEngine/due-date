@@ -690,12 +690,21 @@ STE.ownerTabs.push({ title: 'Due Date', render(el, api) {
 STE.ownerTabs.push({ title: 'Pick dates', render(el, api) {
   const draw = () => {
     const p = pickOf(), ids = Object.keys(people()).sort((a, b) => (isAimeeId(b) - isAimeeId(a)) || nameOf(a).localeCompare(nameOf(b)));
-    el.innerHTML = `<p><label>Name <select id="opWho">${ids.map(id => `<option value="${id}">${api.esc(nameOf(id))}${p[id] ? ' (' + nice(p[id]) + ')' : ''}</option>`).join('')}</select></label></p>
+    el.innerHTML = `<p><label>Add a person <input id="opNew" maxlength="24" placeholder="Name"></label> <button id="opAdd">Add</button><br>
+      <small>Not linked to any phone: give them a date below and tick them in Payments.</small></p>
+      <p><label>Name <select id="opWho">${ids.map(id => `<option value="${id}">${api.esc(nameOf(id))}${p[id] ? ' (' + nice(p[id]) + ')' : ''}</option>`).join('')}</select></label></p>
       <p><label>Date <input id="opDay" type="date" value="${esc(S.due || '')}"></label> <button id="opGo">Give this date</button></p>
       <p><small>Moves the name if it already has a date. A date someone else holds has to be cleared first.</small></p>
       <h3>Picked so far</h3>
       ${Object.keys(S.dates || {}).filter(d => people()[S.dates[d]]).sort().map(d => `<p>${nice(d, true)}: <b>${api.esc(nameOf(S.dates[d]))}</b> <button data-clear="${d}">Clear</button></p>`).join('') || '<p><small>No dates picked yet.</small></p>'}`;
     const save = async patch => { try { await DB.update(patch); draw(); } catch (e) { alert('That did not save: ' + (e.message || e)); } };
+    el.querySelector('#opAdd').onclick = () => {
+      const name = el.querySelector('#opNew').value.trim().replace(/\s+/g, ' ');
+      if (!name) return alert('Type a name first.');
+      if (Object.values(people()).some(x => x.name.toLowerCase() === name.toLowerCase())) return alert(name + ' is already in. Add an initial, like ' + name + ' B.');
+      const id = newId(); // after the lock, new names also go on the end of the order so they show in the list
+      save({ ['people/' + id]: { name, phone: 'host', at: Date.now() }, ...(S.locked ? { ['order/' + (Math.max(-1, ...Object.keys(S.order || {}).map(Number)) + 1)]: id } : {}) });
+    };
     el.querySelector('#opGo').onclick = () => {
       const who = el.querySelector('#opWho').value, day = el.querySelector('#opDay').value, holder = S.dates && people()[S.dates[day]] ? S.dates[day] : null;
       if (!who || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return alert('Choose a name and a date.');
