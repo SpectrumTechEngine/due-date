@@ -686,6 +686,29 @@ STE.ownerTabs.push({ title: 'Due Date', render(el, api) {
   };
   draw();
 } });
+// Pick dates: the host gives any name any free date (or moves / clears it), no turns or limits
+STE.ownerTabs.push({ title: 'Pick dates', render(el, api) {
+  const draw = () => {
+    const p = pickOf(), ids = Object.keys(people()).sort((a, b) => (isAimeeId(b) - isAimeeId(a)) || nameOf(a).localeCompare(nameOf(b)));
+    el.innerHTML = `<p><label>Name <select id="opWho">${ids.map(id => `<option value="${id}">${api.esc(nameOf(id))}${p[id] ? ' (' + nice(p[id]) + ')' : ''}</option>`).join('')}</select></label></p>
+      <p><label>Date <input id="opDay" type="date" value="${esc(S.due || '')}"></label> <button id="opGo">Give this date</button></p>
+      <p><small>Moves the name if it already has a date. A date someone else holds has to be cleared first.</small></p>
+      <h3>Picked so far</h3>
+      ${Object.keys(S.dates || {}).filter(d => people()[S.dates[d]]).sort().map(d => `<p>${nice(d, true)}: <b>${api.esc(nameOf(S.dates[d]))}</b> <button data-clear="${d}">Clear</button></p>`).join('') || '<p><small>No dates picked yet.</small></p>'}`;
+    const save = async patch => { try { await DB.update(patch); draw(); } catch (e) { alert('That did not save: ' + (e.message || e)); } };
+    el.querySelector('#opGo').onclick = () => {
+      const who = el.querySelector('#opWho').value, day = el.querySelector('#opDay').value, holder = S.dates && people()[S.dates[day]] ? S.dates[day] : null;
+      if (!who || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return alert('Choose a name and a date.');
+      if (holder === who) return;
+      if (holder) return alert(nice(day, true) + ' is held by ' + nameOf(holder) + '. Clear it first.');
+      const old = pickOf()[who];
+      if (!confirm(`Give ${nice(day, true)} to ${nameOf(who)}?${old ? ' (moves them off ' + nice(old) + ')' : ''}`)) return;
+      save({ ...(old ? { ['dates/' + old]: null } : {}), ['dates/' + day]: who });
+    };
+    el.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => { if (confirm('Clear ' + nice(b.dataset.clear, true) + ' (' + nameOf(S.dates[b.dataset.clear]) + ')?')) save({ ['dates/' + b.dataset.clear]: null }); });
+  };
+  draw();
+} });
 // Payments: the host ticks off each name (and each up-for-grabs date won) when the Revolut money arrives
 STE.ownerTabs.push({ title: 'Payments', render(el, api) {
   const draw = () => {
