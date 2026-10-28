@@ -298,11 +298,12 @@ const amt = () => S.amount ? euro(S.amount) : 'the entry money';
 const badge = id => isAimeeId(id) ? '<span class="pb free">👑 free</span>' : forfeit(id) ? '<span class="pb lost">❌ forfeit</span>'
   : isPaid(id) ? '<span class="pb ok">✓ paid</span>' : '<span class="pb due">⏳ not paid</span>';
 const colourOf = id => colour(Math.max(0, order().indexOf(id) >= 0 ? order().indexOf(id) : Object.keys(people()).sort((a, b) => people()[a].at - people()[b].at).indexOf(id)));
-// who this phone may pick for right now: its own names on their turn or skipped; Aimee also for the current/skipped person
+// who this phone may pick for: any name without a date (this phone's own names first). A name added on another
+// phone or browser (e.g. WhatsApp's own browser) isn't linked to this one, so everyone can choose any name.
 function canPickFor() {
   if (!S.locked || S.birth) return [];
   const p = pickOf(), now = turnNow(), mine = new Set(myIds()), aim = amAimee();
-  return order().filter(id => !p[id] && !forfeit(id) && (mine.has(id) || aim))
+  return order().filter(id => !p[id] && !forfeit(id))
     .sort((a, b) => (mine.has(b) - mine.has(a)) || ((b === now) - (a === now)));
 }
 function showError() { $('#app').innerHTML = `<div class="card err"><h2>Hmm, the pool won't load 😕</h2><p>Check the internet connection, then refresh the page.</p></div>`; }
@@ -414,8 +415,8 @@ function pickCards() {
   if (ord.every(id => p[id])) banner = `<div class="banner">All the dates are picked! 🎉<br><span class="muted">Now we wait for baby 🍼</span></div>`;
   else if (can.some(id => mine.has(id))) banner = `<div class="banner mine">🎉 Pick any free date!<br><span class="muted">First come, first served 👇</span></div>`;
   else banner = `<div class="banner">First come, first served! 🏃<br><span class="muted">Anyone who hasn't picked can take any free date.</span></div>`;
-  const forSel = can.length > 1 ? `<label class="muted" for="pickFor">Picking for:</label> <select id="pickFor">${can.map(id => `<option value="${id}">${esc(nameOf(id))}${mine.has(id) ? '' : ' (for them)'}</option>`).join('')}</select>`
-    : can.length === 1 && !mine.has(can[0]) ? `<p class="muted">🎀 You can pick for <b>${esc(nameOf(can[0]))}</b> if they ask you to.</p>` : '';
+  const anyMine = can.some(id => mine.has(id));
+  const forSel = !can.length ? '' : `<label class="muted" for="pickFor">${anyMine ? 'Picking for:' : 'Who are you?'}</label> <select id="pickFor">${anyMine ? '' : '<option value="">Choose your name…</option>'}${can.map(id => `<option value="${id}">${esc(nameOf(id))}</option>`).join('')}</select>`;
   const skipNote = can.some(id => skipped(id) && mine.has(id)) ? `<p class="note">⏭️ You were skipped, but you can still grab any free date.</p>` : '';
   return banner + `<div class="card">
       <h2>Pick a date 📅</h2>
@@ -560,7 +561,8 @@ function lockAndDraw() {
 }
 function pick(day) {
   const can = canPickFor(); if (!can.length) return;
-  const who = ($('#pickFor') && $('#pickFor').value) || can[0];
+  const who = $('#pickFor') ? $('#pickFor').value : can[0];
+  if (!who) { $('#pickFor').focus(); return toast('First choose your name above the calendar 👆'); }
   ask(`Pick <b>${nice(day, true)}</b> for <b>${esc(nameOf(who))}</b>?<br><span class="muted">This can't be changed.</span>`, 'Yes, that one! 🍼', () => act(async () => {
     if (pickOf()[who]) return;
     lastDates.pop = day;
