@@ -176,8 +176,8 @@
    1. Everyone opens the link and adds their name(s). One phone can add several.
    2. Whoever adds the name "Aimee" first gets the organiser buttons.
    3. Aimee locks the names: she picks first, everyone else is shuffled at random.
-   4. Each person picks one free date in turn. Aimee can skip slow pickers
-      (they can still grab a free date later).
+   4. Rule change (28 Oct 2026): after Aimee's pick it's first come, first served.
+      Any name not yet picked can take any free date. No pay deadline: Aimee (or the host) ticks who has paid.
    5. Aimee enters the real birth date and the closest guess wins.
    Everything is shared live through Chop the Check's Realtime Database, under dueDate/.
    On localhost, ?mock uses a pretend database in this browser (add &phone=b for a second "phone").
@@ -272,7 +272,7 @@ const myIds = () => Object.keys(people()).filter(id => people()[id].phone === PH
 const order = () => list(S.order).filter(id => people()[id]);
 const pickOf = () => { const p = {}; Object.entries(S.dates || {}).forEach(([d, id]) => { if (people()[id]) p[id] = d; }); return p; };
 const skipped = id => !!(S.skipped && S.skipped[id]);
-const turnNow = () => { const p = pickOf(); return order().find(id => !p[id] && !skipped(id) && !forfeit(id)); };
+const turnNow = () => null; // first come, first served: nobody waits for a turn
 
 /* ---------- paying, the deadline and forfeits ----------
    Everyone except Aimee pays the amount per name into Aimee's Revolut; Aimee (or the host, in the owner tools) ticks
@@ -287,7 +287,7 @@ const todayIE = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Dubli
 const earliest = () => Object.keys(S.dates || {}).filter(d => people()[S.dates[d]]).sort()[0] || null;
 const payBy = () => { const e = earliest(); return e ? fromDay(toDay(e) - DAY) : null; }; // the last day to pay
 const pastDeadline = () => { const e = earliest(); return !!e && todayIE() >= e; };
-function forfeit(id) { return !!S.locked && !isPaid(id) && pastDeadline(); }
+function forfeit(id) { return false; } // no pay deadline any more, so nobody loses their date
 const grabbedBy = d => { const g = S.grabbed && S.grabbed[d]; return g && people()[g.pid] ? g.pid : null; };
 const holderOf = d => { const g = grabbedBy(d); if (g) return g; const id = S.dates && S.dates[d]; return id && people()[id] && !forfeit(id) ? id : null; };
 const upForGrabs = d => { const id = S.dates && S.dates[d]; return !!id && !!people()[id] && forfeit(id) && !grabbedBy(d); };
@@ -302,7 +302,7 @@ const colourOf = id => colour(Math.max(0, order().indexOf(id) >= 0 ? order().ind
 function canPickFor() {
   if (!S.locked || S.birth) return [];
   const p = pickOf(), now = turnNow(), mine = new Set(myIds()), aim = amAimee();
-  return order().filter(id => !p[id] && !forfeit(id) && (id === now || skipped(id)) && (mine.has(id) || aim))
+  return order().filter(id => !p[id] && !forfeit(id) && (mine.has(id) || aim))
     .sort((a, b) => (mine.has(b) - mine.has(a)) || ((b === now) - (a === now)));
 }
 function showError() { $('#app').innerHTML = `<div class="card err"><h2>Hmm, the pool won't load 😕</h2><p>Check the internet connection, then refresh the page.</p></div>`; }
@@ -361,11 +361,9 @@ function payCard() {
   if (!mine.length && !wins.length) return '';
   const owe = mine.filter(id => !isPaid(id) && !forfeit(id)).length + wins.length, by = payBy();
   return `<div class="card pay"><h2>💸 Pay in</h2>
-    <ul class="paylist">${mine.map(id => `<li><span>${esc(nameOf(id))}</span>${badge(id)}</li>`).join('')}
+    <ul class="paylist">${mine.map(id => `<li><span>${esc(nameOf(id))}</span>${isPaid(id) ? badge(id) : `<a class="btn" style="padding:8px 16px;font-size:17px" href="${REVOLUT}" target="_blank" rel="noopener">Pay ${euro(S.amount)}</a>`}</li>`).join('')}
       ${wins.map(d => `<li><span>🎟️ ${nice(d)} (won in a draw)</span><span class="pb due">⏳ pay now</span></li>`).join('')}</ul>
-    ${owe ? `<a class="btn big" href="${REVOLUT}" target="_blank" rel="noopener">Pay ${euro(S.amount * owe)} with Revolut</a>
-      <p class="muted">Put ${owe > 1 || mine.length > 1 ? 'the names' : 'your name'} in the Revolut note. Aimee ticks you off when it arrives.</p>
-      <p class="note">${by ? `⏰ Pay by the end of <b>${nice(by, true)}</b>, or your date goes up for grabs.` : '⏰ Pay before the day before the earliest date anyone picks, or your date goes up for grabs.'}</p>`
+    ${owe ? `<p class="muted">${euro(S.amount)} a name. Put ${mine.length > 1 ? 'the name' : 'your name'} in the Revolut note. Aimee ticks you off when it arrives.</p>`
     : '<p>✓ All paid, thank you! 💕</p>'}
   </div>`;
 }
@@ -384,9 +382,7 @@ function rulesCard() {
   return `<div class="card rules"><h2>📜 The rules</h2><ol>
     <li>Add your name. Each name puts in <b>${amt()}</b>. Aimee plays free 👑</li>
     <li>Pay with the Revolut button and put your name in the note.</li>
-    <li>When everyone's in, Aimee locks the names. She picks first, then everyone else picks in a random order. One date per name.</li>
-    <li><b>Pay deadline:</b> the end of the day before the earliest date anyone has picked${by ? ` (that's <b>${nice(by, true)}</b>)` : ''}. Unpaid names lose their date.</li>
-    <li>Lost dates are <b>up for grabs</b>: enter the draw, and the winner pays another ${amt()} straight away.</li>
+    <li>Aimee picked first. Everyone else: <b>first come, first served</b>. Pick any free date. One date per name.</li>
     <li>Baby born on your date? 🎯 <b>You win the whole jackpot!</b></li>
     <li>Born on a day nobody holds? <b>Half to Aimee</b>, half to the closest guess (ties share that half).</li>
   </ol></div>`;
@@ -415,10 +411,9 @@ function joinCards() {
 function pickCards() {
   const ord = order(), p = pickOf(), now = turnNow(), mine = new Set(myIds()), can = canPickFor();
   let banner;
-  if (!now && ord.every(id => p[id] || forfeit(id))) banner = `<div class="banner">All the dates are picked! 🎉<br><span class="muted">Now we wait for baby 🍼</span></div>`;
-  else if (!now) banner = `<div class="banner">Everyone's had a turn! ⏭️<br><span class="muted">Skipped people can still grab a free date.</span></div>`;
-  else if (mine.has(now)) banner = `<div class="banner mine">🎉 It's your turn${mine.size > 1 ? ' for <b>' + esc(nameOf(now)) + '</b>' : ', <b>' + esc(nameOf(now)) + '</b>'}!<br><span class="muted">Tap a free date below 👇</span></div>`;
-  else banner = `<div class="banner">It's <b>${esc(nameOf(now))}</b>'s turn to pick ⏳</div>`;
+  if (ord.every(id => p[id])) banner = `<div class="banner">All the dates are picked! 🎉<br><span class="muted">Now we wait for baby 🍼</span></div>`;
+  else if (can.some(id => mine.has(id))) banner = `<div class="banner mine">🎉 Pick any free date!<br><span class="muted">First come, first served 👇</span></div>`;
+  else banner = `<div class="banner">First come, first served! 🏃<br><span class="muted">Anyone who hasn't picked can take any free date.</span></div>`;
   const forSel = can.length > 1 ? `<label class="muted" for="pickFor">Picking for:</label> <select id="pickFor">${can.map(id => `<option value="${id}">${esc(nameOf(id))}${mine.has(id) ? '' : ' (for them)'}</option>`).join('')}</select>`
     : can.length === 1 && !mine.has(can[0]) ? `<p class="muted">🎀 You can pick for <b>${esc(nameOf(can[0]))}</b> if they ask you to.</p>` : '';
   const skipNote = can.some(id => skipped(id) && mine.has(id)) ? `<p class="note">⏭️ You were skipped, but you can still grab any free date.</p>` : '';
@@ -433,7 +428,7 @@ function pickCards() {
       <ol class="order">${ord.map((id, i) => `<li class="${id === now ? 'now' : ''}"><span class="n ${colour(i)}">${i + 1}</span>
         <span class="who">${i === 0 && S.aimee && S.aimee.pid === id ? '👑 ' : ''}${esc(nameOf(id))}${mine.has(id) ? ' <span class="muted">(you)</span>' : ''}${S.amount ? ' ' + badge(id) : ''}
           ${wonDays().filter(d => grabbedBy(d) === id).map(d => `<br><span class="muted">🎟️ also ${nice(d)}</span>`).join('')}</span>
-        <span class="st">${forfeit(id) ? (p[id] ? `<s>${nice(p[id])}</s>` : '—') : p[id] ? '📅 ' + nice(p[id]) : id === now ? 'picking now…' : skipped(id) ? '⏭️ skipped' : 'waiting'}</span></li>`).join('')}</ol>
+        <span class="st">${forfeit(id) ? (p[id] ? `<s>${nice(p[id])}</s>` : '—') : p[id] ? '📅 ' + nice(p[id]) : 'not picked yet'}</span></li>`).join('')}</ol>
     </div>`;
 }
 
